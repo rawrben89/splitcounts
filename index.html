@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#6366F1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="SplitCounts">
+    <link rel="manifest" href="manifest.json">
     <title>SplitCounts</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -654,17 +659,109 @@
         }
         .btn-dark-toggle:hover { background: var(--gray-200); }
 
+        /* ── Mobile header actions ── */
+        .btn-more {
+            width: 36px; height: 36px;
+            border: 1.5px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            background: var(--gray-100);
+            cursor: pointer; font-size: 20px; font-weight: 700;
+            display: none; align-items: center; justify-content: center;
+            color: var(--gray-600); transition: all 0.15s;
+        }
+        .btn-more:hover { background: var(--gray-200); }
+
+        .more-menu {
+            position: fixed; top: 64px; right: 12px;
+            background: var(--white);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-lg);
+            border: 1.5px solid var(--gray-200);
+            z-index: 150;
+            min-width: 180px;
+            display: none; flex-direction: column;
+            overflow: hidden;
+        }
+        .more-menu.open { display: flex; }
+        .more-menu-item {
+            padding: 14px 18px;
+            font-size: 14px; font-weight: 500;
+            color: var(--gray-700); cursor: pointer;
+            border: none; background: none;
+            text-align: left;
+            display: flex; align-items: center; gap: 10px;
+            transition: background 0.1s;
+        }
+        .more-menu-item:hover { background: var(--gray-50); }
+        .more-menu-item + .more-menu-item { border-top: 1px solid var(--gray-100); }
+
         /* ── Responsive ── */
         @media (max-width: 768px) {
-            .app-layout { flex-direction: column; padding: 12px; }
+            .app-layout { flex-direction: column; padding: 12px 12px 80px; }
             .sidebar { width: 100%; }
             .form-row { grid-template-columns: 1fr; }
-            .app-header { padding: 0 16px; }
-            .header-actions { gap: 6px; }
-            .btn { padding: 7px 12px; font-size: 13px; }
-            .currency-select { font-size: 13px; }
+            .app-header { padding: 0 12px; }
             .logo-group-name { display: none; }
-            .welcome-card { padding: 28px 20px; }
+            .welcome-card { padding: 24px 18px; max-height: 95vh; overflow-y: auto; }
+            .welcome-overlay { align-items: flex-start; padding: 16px 12px; overflow-y: auto; }
+
+            /* Hide desktop header actions, show mobile ones */
+            .header-desktop { display: none !important; }
+            .btn-more { display: flex; }
+
+            /* Bottom tab bar */
+            .tabs {
+                position: fixed; bottom: 0; left: 0; right: 0;
+                z-index: 90;
+                border-radius: 0;
+                border-top: 1.5px solid var(--gray-200);
+                margin: 0; padding: 0;
+                box-shadow: 0 -4px 12px rgba(0,0,0,0.08);
+            }
+            .tab {
+                flex-direction: column; gap: 3px;
+                padding: 10px 6px;
+                font-size: 11px; font-weight: 600;
+                min-height: 56px;
+            }
+            .tab-icon { font-size: 20px; }
+
+            /* Full-screen bottom-sheet modal */
+            .modal-overlay { padding: 0; align-items: flex-end; }
+            .modal {
+                max-width: 100%; width: 100%;
+                border-bottom-left-radius: 0;
+                border-bottom-right-radius: 0;
+                border-top-left-radius: var(--radius-lg);
+                border-top-right-radius: var(--radius-lg);
+                max-height: 95dvh;
+                transform: translateY(100%);
+            }
+            .modal-overlay.open .modal { transform: translateY(0); }
+
+            /* Drag handle */
+            .modal::before {
+                content: '';
+                display: block;
+                width: 40px; height: 4px;
+                background: var(--gray-300);
+                border-radius: 2px;
+                margin: 12px auto 0;
+            }
+
+            /* Bigger touch targets */
+            .btn { min-height: 44px; }
+            .add-expense-btn { min-height: 52px; font-size: 16px; }
+            .expense-card { padding: 16px; }
+            .split-person-amount { width: 80px; min-height: 40px; }
+            input[type="checkbox"] { width: 22px !important; height: 22px !important; }
+            .category-btn { min-height: 56px; font-size: 22px; }
+            .group-item { padding: 14px; min-height: 64px; }
+        }
+
+        @media (max-width: 380px) {
+            .category-grid { grid-template-columns: repeat(5, 1fr); gap: 5px; }
+            .category-label { display: none; }
         }
     </style>
 </head>
@@ -718,25 +815,37 @@
         <span class="logo-group-name" id="headerGroupName"></span>
     </div>
     <div class="header-actions">
-        <button class="btn btn-secondary" onclick="goToNewGroup()">← New Group</button>
-        <button class="btn-share" onclick="shareGroup()" id="shareBtn" title="Copy shareable link">
-            🔗 Share
-        </button>
-        <select class="currency-select" id="currencySelect" onchange="setCurrency(this.value)">
-            <option value="$">$ USD</option>
-            <option value="€">€ EUR</option>
-            <option value="£">£ GBP</option>
-            <option value="¥">¥ JPY</option>
-            <option value="₹">₹ INR</option>
-            <option value="A$">A$ AUD</option>
-            <option value="C$">C$ CAD</option>
-            <option value="Fr">Fr CHF</option>
-            <option value="kr">kr SEK</option>
-        </select>
-        <button class="btn btn-secondary" onclick="exportData()">⬇ Export</button>
+        <!-- Desktop actions -->
+        <div class="header-desktop" style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-secondary" onclick="goToNewGroup()">← New Group</button>
+            <button class="btn-share" onclick="shareGroup()">🔗 Share</button>
+            <select class="currency-select" id="currencySelect" onchange="setCurrency(this.value)">
+                <option value="$">$ USD</option>
+                <option value="€">€ EUR</option>
+                <option value="£">£ GBP</option>
+                <option value="¥">¥ JPY</option>
+                <option value="₹">₹ INR</option>
+                <option value="A$">A$ AUD</option>
+                <option value="C$">C$ CAD</option>
+                <option value="Fr">Fr CHF</option>
+                <option value="kr">kr SEK</option>
+            </select>
+            <button class="btn btn-secondary" onclick="exportData()">⬇ Export</button>
+        </div>
+        <!-- Always visible -->
         <button class="btn-dark-toggle" id="darkToggle" onclick="toggleDark()" title="Toggle dark mode">🌙</button>
+        <!-- Mobile: share + more menu -->
+        <button class="btn-share" onclick="shareGroup()" style="display:none" id="shareBtnMobile">🔗</button>
+        <button class="btn-more" id="moreBtn" onclick="toggleMoreMenu()">⋯</button>
     </div>
 </header>
+
+<!-- Mobile more menu -->
+<div class="more-menu" id="moreMenu">
+    <button class="more-menu-item" onclick="goToNewGroup(); closeMoreMenu()">← New Group</button>
+    <button class="more-menu-item" onclick="showCurrencyPicker(); closeMoreMenu()">💱 Currency</button>
+    <button class="more-menu-item" onclick="exportData(); closeMoreMenu()">⬇ Export</button>
+</div>
 
 <div class="app-layout">
     <!-- Sidebar -->
@@ -766,9 +875,9 @@
     <!-- Main -->
     <main class="main-content">
         <div class="tabs">
-            <button class="tab active" onclick="switchTab('expenses', this)">📋 Expenses</button>
-            <button class="tab" onclick="switchTab('balances', this)">⚖️ Balances</button>
-            <button class="tab" onclick="switchTab('settle', this)">✅ Settle Up</button>
+            <button class="tab active" onclick="switchTab('expenses', this)"><span class="tab-icon">📋</span>Expenses</button>
+            <button class="tab" onclick="switchTab('balances', this)"><span class="tab-icon">⚖️</span>Balances</button>
+            <button class="tab" onclick="switchTab('settle', this)"><span class="tab-icon">✅</span>Settle Up</button>
         </div>
 
         <div id="tab-expenses" class="tab-content active">
@@ -1593,6 +1702,36 @@ document.addEventListener('keydown', e => {
 });
 
 // ═══════════════════════════════════════════════
+//  MOBILE MENU
+// ═══════════════════════════════════════════════
+function toggleMoreMenu() {
+    document.getElementById('moreMenu').classList.toggle('open');
+}
+function closeMoreMenu() {
+    document.getElementById('moreMenu').classList.remove('open');
+}
+document.addEventListener('click', e => {
+    const menu = document.getElementById('moreMenu');
+    const btn  = document.getElementById('moreBtn');
+    if (menu && !menu.contains(e.target) && e.target !== btn) closeMoreMenu();
+});
+
+function showCurrencyPicker() {
+    const cur = prompt('Enter currency symbol (e.g. $, €, £, ¥):', state.currency || '$');
+    if (cur) setCurrency(cur.trim());
+}
+
+function applyMobileLayout() {
+    const mobile = window.innerWidth <= 768;
+    const shareMobile = document.getElementById('shareBtnMobile');
+    if (shareMobile) shareMobile.style.display = mobile ? 'flex' : 'none';
+    // Sync currency select (desktop only)
+    const cs = document.getElementById('currencySelect');
+    if (cs) cs.value = state.currency || '$';
+}
+window.addEventListener('resize', applyMobileLayout);
+
+// ═══════════════════════════════════════════════
 //  DARK MODE
 // ═══════════════════════════════════════════════
 function toggleDark() {
@@ -1615,6 +1754,7 @@ function loadDark() {
 // ═══════════════════════════════════════════════
 loadDark();
 load();
+applyMobileLayout();
 </script>
 </body>
 </html>
