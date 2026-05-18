@@ -120,6 +120,41 @@
         }
         .welcome-join-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
 
+        /* ── Group List ── */
+        .group-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+
+        .group-item {
+            display: flex; align-items: center; gap: 12px;
+            padding: 12px 14px;
+            border: 1.5px solid var(--gray-200);
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: all 0.15s;
+            background: var(--white);
+        }
+        .group-item:hover { border-color: var(--primary); background: var(--primary-light); }
+
+        .group-item-icon {
+            width: 40px; height: 40px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            border-radius: var(--radius-sm);
+            display: flex; align-items: center; justify-content: center;
+            color: white; font-size: 18px; flex-shrink: 0;
+        }
+        .group-item-info { flex: 1; min-width: 0; }
+        .group-item-name { font-size: 15px; font-weight: 600; color: var(--gray-900); }
+        .group-item-meta { font-size: 12px; color: var(--gray-500); margin-top: 2px; }
+
+        .group-item-delete {
+            width: 28px; height: 28px;
+            border: none; background: none; cursor: pointer;
+            color: var(--gray-400); border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px; opacity: 0; transition: all 0.15s;
+        }
+        .group-item:hover .group-item-delete { opacity: 1; }
+        .group-item-delete:hover { background: var(--danger-light); color: var(--danger); }
+
         /* ── Header ── */
         .app-header {
             background: var(--white);
@@ -644,13 +679,20 @@
         </div>
         <p class="welcome-subtitle">Track shared expenses, split fairly</p>
 
+        <!-- Existing groups list -->
+        <div id="groupList" style="display:none">
+            <div class="card-title" style="margin-bottom:12px">Your Groups</div>
+            <div class="group-list" id="groupListItems"></div>
+            <div class="welcome-divider"><span>or create new</span></div>
+        </div>
+
         <div class="form-group">
             <label class="form-label">Group Name</label>
             <input type="text" class="input-large" id="welcomeGroupName"
                 placeholder="Weekend trip, Dinner, Rent…" maxlength="50"
                 onkeydown="if(event.key==='Enter') document.getElementById('welcomeYourName').focus()">
         </div>
-        <div class="form-group">
+        <div class="form-group" id="yourNameGroup">
             <label class="form-label">Your Name</label>
             <input type="text" class="input-large" id="welcomeYourName"
                 placeholder="Enter your name" maxlength="30"
@@ -840,29 +882,36 @@ let categoryIdx = 0;
 // ═══════════════════════════════════════════════
 //  PERSISTENCE
 // ═══════════════════════════════════════════════
-function save() { localStorage.setItem('splitcounts', JSON.stringify(state)); }
+function getGroups() {
+    try { return JSON.parse(localStorage.getItem('splitcounts-groups') || '[]'); } catch { return []; }
+}
+
+function saveGroups(groups) {
+    localStorage.setItem('splitcounts-groups', JSON.stringify(groups));
+}
+
+function save() {
+    if (!state.id) state.id = Date.now().toString();
+    const groups = getGroups();
+    const idx = groups.findIndex(g => g.id === state.id);
+    if (idx >= 0) groups[idx] = state;
+    else groups.push(state);
+    saveGroups(groups);
+}
 
 function load() {
-    // Check URL hash for shared state
     const hash = window.location.hash;
     if (hash.startsWith('#data=')) {
         try {
             const shared = decodeState(hash.slice(6));
             if (shared && Array.isArray(shared.people) && Array.isArray(shared.expenses)) {
-                const existing = localStorage.getItem('splitcounts');
-                if (existing) {
-                    const confirmMsg = shared.groupName
-                        ? `Open shared group "${shared.groupName}"? This will replace your current group.`
-                        : 'Open shared group? This will replace your current group.';
-                    if (!confirm(confirmMsg)) {
-                        // Keep existing, clear hash
-                        history.replaceState(null, '', window.location.pathname);
-                        loadFromStorage();
-                        return;
-                    }
+                if (!shared.id) shared.id = Date.now().toString();
+                const groups = getGroups();
+                if (!groups.find(g => g.id === shared.id)) {
+                    groups.push(shared);
+                    saveGroups(groups);
                 }
                 state = shared;
-                save();
                 history.replaceState(null, '', window.location.pathname);
                 applyStateToUI();
                 hideWelcome();
@@ -872,15 +921,16 @@ function load() {
         history.replaceState(null, '', window.location.pathname);
     }
 
-    loadFromStorage();
-}
-
-function loadFromStorage() {
-    const raw = localStorage.getItem('splitcounts');
-    if (raw) {
+    // Migrate old single-group format
+    const old = localStorage.getItem('splitcounts');
+    if (old) {
         try {
-            const parsed = JSON.parse(raw);
+            const parsed = JSON.parse(old);
             if (parsed && Array.isArray(parsed.people)) {
+                if (!parsed.id) parsed.id = Date.now().toString();
+                const groups = getGroups();
+                if (!groups.find(g => g.id === parsed.id)) { groups.push(parsed); saveGroups(groups); }
+                localStorage.removeItem('splitcounts');
                 state = parsed;
                 applyStateToUI();
                 hideWelcome();
@@ -888,7 +938,15 @@ function loadFromStorage() {
             }
         } catch {}
     }
-    showWelcome();
+
+    const groups = getGroups();
+    if (groups.length === 1) {
+        state = groups[0];
+        applyStateToUI();
+        hideWelcome();
+    } else {
+        showWelcome();
+    }
 }
 
 function applyStateToUI() {
@@ -903,6 +961,9 @@ function applyStateToUI() {
 //  WELCOME SCREEN
 // ═══════════════════════════════════════════════
 function showWelcome() {
+    renderGroupList();
+    document.getElementById('welcomeGroupName').value = '';
+    document.getElementById('welcomeYourName').value = '';
     document.getElementById('welcomeScreen').classList.remove('hidden');
     setTimeout(() => document.getElementById('welcomeGroupName').focus(), 100);
 }
@@ -911,29 +972,73 @@ function hideWelcome() {
     document.getElementById('welcomeScreen').classList.add('hidden');
 }
 
-function goToNewGroup() {
-    if (state.expenses.length > 0) {
-        if (!confirm('Leave this group and create a new one? Export first if you want to keep it.')) return;
+function renderGroupList() {
+    const groups = getGroups();
+    const container = document.getElementById('groupList');
+    const items = document.getElementById('groupListItems');
+    const yourNameGroup = document.getElementById('yourNameGroup');
+
+    if (!groups.length) {
+        container.style.display = 'none';
+        yourNameGroup.style.display = 'block';
+        return;
     }
-    localStorage.removeItem('splitcounts');
-    state = { groupName: '', people: [], expenses: [], currency: '$', nextId: 1 };
-    document.getElementById('welcomeGroupName').value = '';
-    document.getElementById('welcomeYourName').value = '';
+
+    container.style.display = 'block';
+    yourNameGroup.style.display = 'none';
+
+    items.innerHTML = groups.map(g => {
+        const total = (g.expenses || []).reduce((s, e) => s + e.amount, 0);
+        const s = (g.currency || '$').includes(' ') ? g.currency.split(' ')[0] : (g.currency || '$');
+        return `
+        <div class="group-item" onclick="openGroup('${g.id}')">
+            <div class="group-item-icon">👥</div>
+            <div class="group-item-info">
+                <div class="group-item-name">${g.groupName || 'Unnamed group'}</div>
+                <div class="group-item-meta">${(g.people || []).length} people · ${(g.expenses || []).length} expenses · ${s}${total.toFixed(2)}</div>
+            </div>
+            <button class="group-item-delete" onclick="event.stopPropagation(); deleteGroup('${g.id}')" title="Delete">×</button>
+        </div>`;
+    }).join('');
+}
+
+function openGroup(id) {
+    const group = getGroups().find(g => g.id === id);
+    if (!group) return;
+    state = group;
+    applyStateToUI();
+    hideWelcome();
+}
+
+function deleteGroup(id) {
+    if (!confirm('Delete this group?')) return;
+    saveGroups(getGroups().filter(g => g.id !== id));
+    renderGroupList();
+}
+
+function goToNewGroup() {
+    save();
     showWelcome();
 }
 
 function createGroup() {
     const groupName = document.getElementById('welcomeGroupName').value.trim();
-    const yourName  = document.getElementById('welcomeYourName').value.trim();
+    const groups = getGroups();
 
     if (!groupName) { document.getElementById('welcomeGroupName').focus(); showToast('Enter a group name'); return; }
-    if (!yourName)  { document.getElementById('welcomeYourName').focus();  showToast('Enter your name');  return; }
 
-    state = { groupName, people: [yourName], expenses: [], currency: '$', nextId: 1 };
+    if (!groups.length) {
+        const yourName = document.getElementById('welcomeYourName').value.trim();
+        if (!yourName) { document.getElementById('welcomeYourName').focus(); showToast('Enter your name'); return; }
+        state = { id: Date.now().toString(), groupName, people: [yourName], expenses: [], currency: '$', nextId: 1 };
+    } else {
+        state = { id: Date.now().toString(), groupName, people: [], expenses: [], currency: '$', nextId: 1 };
+    }
+
     save();
     applyStateToUI();
     hideWelcome();
-    showToast('Group created! Share the link to invite others.');
+    showToast('Group created!');
 }
 
 // ═══════════════════════════════════════════════
