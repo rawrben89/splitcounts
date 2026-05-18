@@ -635,6 +635,7 @@
         <span class="logo-group-name" id="headerGroupName"></span>
     </div>
     <div class="header-actions">
+        <button class="btn btn-secondary" onclick="goToNewGroup()">← New Group</button>
         <button class="btn-share" onclick="shareGroup()" id="shareBtn" title="Copy shareable link">
             🔗 Share
         </button>
@@ -866,6 +867,17 @@ function showWelcome() {
 
 function hideWelcome() {
     document.getElementById('welcomeScreen').classList.add('hidden');
+}
+
+function goToNewGroup() {
+    if (state.expenses.length > 0) {
+        if (!confirm('Leave this group and create a new one? Export first if you want to keep it.')) return;
+    }
+    localStorage.removeItem('splitcounts');
+    state = { groupName: '', people: [], expenses: [], currency: '$', nextId: 1 };
+    document.getElementById('welcomeGroupName').value = '';
+    document.getElementById('welcomeYourName').value = '';
+    showWelcome();
 }
 
 function createGroup() {
